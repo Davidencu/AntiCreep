@@ -2,6 +2,7 @@ package com.example.detectorulcreeps
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -49,7 +50,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.util.concurrent.Executors
 
 @Composable
-fun OpticScanScreen(onResult: (Float) -> Unit, onBack: () -> Unit) {
+fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -67,6 +68,8 @@ fun OpticScanScreen(onResult: (Float) -> Unit, onBack: () -> Unit) {
     var torchOn by remember { mutableStateOf(true) }
     var session by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf(OpticState(0f, 0f, 0f, 0)) }
+    // Cadrul cu scorul optic maxim, cu chenarele desenate; apare în ecranul Rezultat.
+    var snapshot by remember { mutableStateOf<Bitmap?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Scanare optică", style = MaterialTheme.typography.titleLarge)
@@ -88,6 +91,7 @@ fun OpticScanScreen(onResult: (Float) -> Unit, onBack: () -> Unit) {
                         torchOn = torchOn,
                         session = session,
                         onState = { state = it },
+                        onSnapshot = { snapshot = it },
                         modifier = Modifier.fillMaxSize(),
                     )
                     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -119,10 +123,13 @@ fun OpticScanScreen(onResult: (Float) -> Unit, onBack: () -> Unit) {
         }
         Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { torchOn = !torchOn }) { Text(if (torchOn) "Bliț: ON" else "Bliț: OFF") }
-            Button(onClick = { session++ }) { Text("Resetează") }
+            Button(onClick = {
+                session++
+                snapshot = null
+            }) { Text("Resetează") }
             Button(onClick = onBack) { Text("Înapoi") }
         }
-        Button(onClick = { onResult(state.peakScore) }, modifier = Modifier.padding(top = 8.dp)) {
+        Button(onClick = { onResult(state.peakScore, snapshot) }, modifier = Modifier.padding(top = 8.dp)) {
             Text("Vezi rezultatul")
         }
     }
@@ -133,6 +140,7 @@ private fun CameraPreview(
     torchOn: Boolean,
     session: Int,
     onState: (OpticState) -> Unit,
+    onSnapshot: (Bitmap) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -146,11 +154,13 @@ private fun CameraPreview(
     }
     var camera by remember { mutableStateOf<Camera?>(null) }
     val currentOnState by rememberUpdatedState(onState)
+    val currentOnSnapshot by rememberUpdatedState(onSnapshot)
 
     DisposableEffect(lifecycleOwner, session) {
         val executor = Executors.newSingleThreadExecutor()
         val detector = RetroreflectionDetector()
         val processor = OpticProcessor()
+        var bestPeak = 0f
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             val provider = providerFuture.get()
@@ -169,10 +179,17 @@ private fun CameraPreview(
                 val rotation = image.imageInfo.rotationDegrees
                 val upright = rotation % 180 == 0
                 val aspect = if (upright) image.width.toFloat() / image.height else image.height.toFloat() / image.width
-                val raw = detector.detect(image.toLumaFrame())
+                val frame = image.toLumaFrame()
                 image.close()
+                val raw = detector.detect(frame)
                 val detection = raw.copy(blobs = raw.blobs.map { it.rotated(rotation) })
-                currentOnState(processor.process(detection, aspect))
+                val state = processor.process(detection, aspect)
+                // Imaginea se reface doar când scorul maxim crește, nu la fiecare cadru.
+                if (detection.blobs.isNotEmpty() && state.peakScore > bestPeak) {
+                    bestPeak = state.peakScore
+                    currentOnSnapshot(createSnapshot(frame, rotation, detection.blobs))
+                }
+                currentOnState(state)
             }
             provider.unbindAll()
             camera = provider.bindToLifecycle(

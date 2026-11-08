@@ -1,5 +1,6 @@
 package com.example.detectorulcreeps
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,9 +15,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,36 +47,82 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Start, MagneticScan, OpticScan, Result }
+private enum class Screen { Start, Preparation, MagneticScan, OpticScan, Result, History, ReportDetail }
 
 @Composable
 private fun DetectorApp() {
     var screen by rememberSaveable { mutableStateOf(Screen.Start) }
     var magneticPeak by rememberSaveable { mutableFloatStateOf(0f) }
     var result by remember { mutableStateOf<FusionResult?>(null) }
+    var snapshot by remember { mutableStateOf<Bitmap?>(null) }
+    var selectedReportId by rememberSaveable { mutableLongStateOf(0L) }
     val fusion = remember { FusionModule() }
+    val context = LocalContext.current
+    val database = remember { ReportDatabase(context) }
+    DisposableEffect(database) { onDispose { database.close() } }
     when (screen) {
-        Screen.Start -> StartScreen(onStart = { screen = Screen.MagneticScan })
+        Screen.Start -> StartScreen(
+            onStart = { screen = Screen.Preparation },
+            onHistory = { screen = Screen.History },
+        )
+        Screen.Preparation -> PreparationScreen(
+            onContinue = { screen = Screen.MagneticScan },
+            onBack = { screen = Screen.Start },
+        )
         Screen.MagneticScan -> MagneticScanScreen(
             onNext = { peak ->
                 magneticPeak = peak
                 screen = Screen.OpticScan
             },
-            onBack = { screen = Screen.Start },
+            onBack = { screen = Screen.Preparation },
         )
         Screen.OpticScan -> OpticScanScreen(
-            onResult = { opticPeak ->
+            onResult = { opticPeak, opticSnapshot ->
                 result = fusion.fuse(magneticPeak, opticPeak)
+                snapshot = opticSnapshot
                 screen = Screen.Result
             },
             onBack = { screen = Screen.MagneticScan },
         )
-        Screen.Result -> result?.let { ResultScreen(it, onRestart = { screen = Screen.Start }) }
+        Screen.Result -> result?.let { current ->
+            val currentSnapshot = snapshot
+            ResultScreen(
+                result = current,
+                snapshot = currentSnapshot,
+                onSave = { name, note ->
+                    val jpeg = currentSnapshot?.let { withContext(Dispatchers.Default) { it.toJpeg() } }
+                    database.create(
+                        Report(
+                            name = name,
+                            note = note,
+                            createdAt = System.currentTimeMillis(),
+                            result = current,
+                            snapshot = jpeg,
+                        )
+                    )
+                },
+                onRestart = { screen = Screen.Start },
+                onHistory = { screen = Screen.History },
+            )
+        } ?: LaunchedEffect(Unit) { screen = Screen.Start } // rezultatul se pierde la recrearea activității
+        Screen.History -> HistoryScreen(
+            database = database,
+            onOpen = { id ->
+                selectedReportId = id
+                screen = Screen.ReportDetail
+            },
+            onBack = { screen = Screen.Start },
+        )
+        Screen.ReportDetail -> ReportDetailScreen(
+            database = database,
+            reportId = selectedReportId,
+            onBack = { screen = Screen.History },
+        )
     }
 }
 
 @Composable
-private fun StartScreen(onStart: () -> Unit) {
+private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -83,6 +135,7 @@ private fun StartScreen(onStart: () -> Unit) {
             modifier = Modifier.padding(top = 8.dp, bottom = 32.dp),
         )
         Button(onClick = onStart) { Text("Începe scanarea") }
+        Button(onClick = onHistory, modifier = Modifier.padding(top = 12.dp)) { Text("Istoric rapoarte") }
     }
 }
 
