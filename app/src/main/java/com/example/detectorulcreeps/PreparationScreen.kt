@@ -31,6 +31,13 @@ private val tips = listOf(
     "Mișcați telefonul lent, la 30–50 cm de obiecte.",
 )
 
+private val permissions = listOf(
+    "Rețea locală" to "triajul sondează dispozitivele din rețeaua Wi-Fi la care ești conectat, ca să găsească " +
+        "unele care se comportă ca o cameră. Se scanează doar rețeaua locală și nimic nu pleacă de pe telefon. " +
+        "Android îți cere acordul la începutul triajului.",
+    "Cameră" to "scanarea optică caută lentile. Imaginile rămân pe telefon.",
+)
+
 @Composable
 fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
     var understood by rememberSaveable { mutableStateOf(false) }
@@ -70,9 +77,19 @@ fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
         )
         Text(
-            "Calibrare magnetică (3 secunde, telefonul nemișcat), scanare magnetică, scanare optică cu blițul, rezultat.",
+            "Triaj de rețea Wi-Fi, scanare optică cu blițul, confirmare magnetică (calibrare de 3 secunde, " +
+                "telefonul nemișcat, apoi apropiere de zonele suspecte), rezultat.",
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
+
+        Text(
+            "Permisiuni",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+        )
+        permissions.forEach { (name, reason) ->
+            Text("• $name: $reason", modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        }
 
         Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = understood, onCheckedChange = { understood = it })
@@ -80,7 +97,7 @@ fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
         }
         Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onBack) { Text("Înapoi") }
-            Button(onClick = onContinue, enabled = understood) { Text("Începe calibrarea") }
+            Button(onClick = onContinue, enabled = understood) { Text("Începe triajul") }
         }
     }
 }

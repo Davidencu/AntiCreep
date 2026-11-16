@@ -130,7 +130,7 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
             Button(onClick = onBack) { Text("Înapoi") }
         }
         Button(onClick = { onResult(state.peakScore, snapshot) }, modifier = Modifier.padding(top = 8.dp)) {
-            Text("Vezi rezultatul")
+            Text("Continuă: confirmare magnetică")
         }
     }
 }

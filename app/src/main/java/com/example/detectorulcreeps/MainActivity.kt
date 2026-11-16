@@ -47,12 +47,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Start, Preparation, MagneticScan, OpticScan, Result, History, ReportDetail }
+private enum class Screen { Start, Preparation, NetworkTriage, OpticScan, MagneticScan, Result, History, ReportDetail }
 
 @Composable
 private fun DetectorApp() {
     var screen by rememberSaveable { mutableStateOf(Screen.Start) }
-    var magneticPeak by rememberSaveable { mutableFloatStateOf(0f) }
+    var opticPeak by rememberSaveable { mutableFloatStateOf(0f) }
+    var networkResult by remember { mutableStateOf<NetworkTriageResult?>(null) }
     var result by remember { mutableStateOf<FusionResult?>(null) }
     var snapshot by remember { mutableStateOf<Bitmap?>(null) }
     var selectedReportId by rememberSaveable { mutableLongStateOf(0L) }
@@ -66,23 +67,30 @@ private fun DetectorApp() {
             onHistory = { screen = Screen.History },
         )
         Screen.Preparation -> PreparationScreen(
-            onContinue = { screen = Screen.MagneticScan },
+            onContinue = { screen = Screen.NetworkTriage },
             onBack = { screen = Screen.Start },
         )
-        Screen.MagneticScan -> MagneticScanScreen(
-            onNext = { peak ->
-                magneticPeak = peak
+        Screen.NetworkTriage -> NetworkTriageScreen(
+            onResult = { triage ->
+                networkResult = triage
                 screen = Screen.OpticScan
             },
             onBack = { screen = Screen.Preparation },
         )
         Screen.OpticScan -> OpticScanScreen(
-            onResult = { opticPeak, opticSnapshot ->
-                result = fusion.fuse(magneticPeak, opticPeak)
+            onResult = { peak, opticSnapshot ->
+                opticPeak = peak
                 snapshot = opticSnapshot
+                screen = Screen.MagneticScan
+            },
+            onBack = { screen = Screen.NetworkTriage },
+        )
+        Screen.MagneticScan -> MagneticScanScreen(
+            onNext = { magneticPeak ->
+                result = fusion.fuse(magneticPeak, opticPeak, networkResult)
                 screen = Screen.Result
             },
-            onBack = { screen = Screen.MagneticScan },
+            onBack = { screen = Screen.OpticScan },
         )
         Screen.Result -> result?.let { current ->
             val currentSnapshot = snapshot
@@ -193,7 +201,7 @@ private fun MagneticScanScreen(onNext: (Float) -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 Text(
-                    "Mișcă lent telefonul de-a lungul pereților și mobilei.",
+                    "Apropie lent telefonul de zonele marcate la scanarea optică și de obiectele suspecte.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 16.dp),
                 )
@@ -206,6 +214,6 @@ private fun MagneticScanScreen(onNext: (Float) -> Unit, onBack: () -> Unit) {
         Button(
             onClick = { onNext((state as? MagneticState.Scanning)?.peakScore ?: 0f) },
             modifier = Modifier.padding(top = 12.dp),
-        ) { Text("Continuă: scanare optică") }
+        ) { Text("Vezi rezultatul") }
     }
 }

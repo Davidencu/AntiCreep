@@ -29,7 +29,10 @@ class ReportDatabase(context: Context) :
                 $OPTIC REAL NOT NULL,
                 $MAGNETIC_FLAG INTEGER NOT NULL,
                 $OPTIC_FLAG INTEGER NOT NULL,
-                $SNAPSHOT BLOB
+                $SNAPSHOT BLOB,
+                $NETWORK_FLAG INTEGER NOT NULL DEFAULT 0,
+                $NETWORK_COMPLETE INTEGER NOT NULL DEFAULT 0,
+                $NETWORK_DEVICES TEXT NOT NULL DEFAULT ''
             )
             """.trimIndent()
         )
@@ -38,6 +41,12 @@ class ReportDatabase(context: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Versiunea 2 adaugă imaginea zonei suspecte; rapoartele vechi rămân, fără imagine.
         if (oldVersion < 2) db.execSQL("ALTER TABLE $TABLE ADD COLUMN $SNAPSHOT BLOB")
+        // Versiunea 3 adaugă triajul de rețea. Rapoartele vechi nu au rulat triajul, deci apar ca incomplete.
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_FLAG INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_COMPLETE INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_DEVICES TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     /** Create: salvează raportul și întoarce id-ul lui. */
@@ -84,6 +93,9 @@ class ReportDatabase(context: Context) :
         put(MAGNETIC_FLAG, if (result.magneticFlag) 1 else 0)
         put(OPTIC_FLAG, if (result.opticFlag) 1 else 0)
         put(SNAPSHOT, snapshot)
+        put(NETWORK_FLAG, if (result.networkFlag) 1 else 0)
+        put(NETWORK_COMPLETE, if (result.networkComplete) 1 else 0)
+        put(NETWORK_DEVICES, result.networkDevices)
     }
 
     private fun Cursor.toReport() = Report(
@@ -98,13 +110,16 @@ class ReportDatabase(context: Context) :
             opticScore = getFloat(getColumnIndexOrThrow(OPTIC)),
             magneticFlag = getInt(getColumnIndexOrThrow(MAGNETIC_FLAG)) == 1,
             opticFlag = getInt(getColumnIndexOrThrow(OPTIC_FLAG)) == 1,
+            networkFlag = getInt(getColumnIndexOrThrow(NETWORK_FLAG)) == 1,
+            networkComplete = getInt(getColumnIndexOrThrow(NETWORK_COMPLETE)) == 1,
+            networkDevices = getString(getColumnIndexOrThrow(NETWORK_DEVICES)),
         ),
         snapshot = getColumnIndexOrThrow(SNAPSHOT).let { if (isNull(it)) null else getBlob(it) },
     )
 
     private companion object {
         const val DB_NAME = "rapoarte.db"
-        const val DB_VERSION = 2
+        const val DB_VERSION = 3
         const val TABLE = "reports"
         const val ID = "id"
         const val NAME = "name"
@@ -117,5 +132,8 @@ class ReportDatabase(context: Context) :
         const val MAGNETIC_FLAG = "magnetic_flag"
         const val OPTIC_FLAG = "optic_flag"
         const val SNAPSHOT = "snapshot"
+        const val NETWORK_FLAG = "network_flag"
+        const val NETWORK_COMPLETE = "network_complete"
+        const val NETWORK_DEVICES = "network_devices"
     }
 }

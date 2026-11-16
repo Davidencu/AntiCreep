@@ -124,8 +124,8 @@ fun RiskLevel.color(): Color = when (this) {
 
 private fun RiskLevel.explanation(): String = when (this) {
     RiskLevel.LOW -> "Niciun modul nu a semnalat indicii."
-    RiskLevel.MEDIUM -> "Un singur modul a semnalat indicii. Verificați zona."
-    RiskLevel.HIGH -> "Ambele module au semnalat indicii. Verificați atent zona."
+    RiskLevel.MEDIUM -> "Un singur indiciu (un modul sau rețeaua). Verificați zona."
+    RiskLevel.HIGH -> "Mai multe indicii coincid. Verificați atent zona."
 }
 
 /** Panoul colorat cu nivelul de risc. */
@@ -150,12 +150,23 @@ fun SuspectZones(result: FusionResult, snapshot: Bitmap?) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text("Zone suspecte", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
         when {
-            !result.magneticFlag && !result.opticFlag -> Text("Nicio zonă suspectă.")
+            !result.magneticFlag && !result.opticFlag && !result.networkFlag -> Text("Nicio zonă suspectă.")
             else -> {
+                if (result.networkFlag) Text("• Dispozitiv din rețea care se comportă ca o cameră")
                 if (result.magneticFlag) Text("• Câmp magnetic anormal (aparat electronic activ în apropiere)")
                 if (result.opticFlag) Text("• Punct luminos de tip lentilă (posibilă cameră)")
             }
         }
+        if (result.networkDevices.isNotBlank()) {
+            Text("Dispozitive suspecte din rețea:", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            result.networkDevices.lines().forEach { Text("  $it", style = MaterialTheme.typography.bodySmall) }
+        }
+        Text(
+            if (result.networkComplete) "Triaj de rețea: complet."
+            else "Triaj de rețea: incomplet sau nerulat. Nivelul de risc nu a fost coborât din acest motiv.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 8.dp),
+        )
         if (snapshot != null) {
             Text(
                 "Cadrul cu scorul optic cel mai mare. Punctele luminoase sunt încadrate cu roșu:",
