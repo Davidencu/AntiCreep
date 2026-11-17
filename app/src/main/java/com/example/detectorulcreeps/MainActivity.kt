@@ -1,6 +1,9 @@
 package com.example.detectorulcreeps
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,7 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,7 +52,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Start, Preparation, NetworkTriage, OpticScan, MagneticScan, Result, History, ReportDetail }
+private enum class Screen { Start, Preparation, NetworkTriage, OpticScan, MagneticScan, Result, History, ReportDetail, Settings }
 
 @Composable
 private fun DetectorApp() {
@@ -57,14 +62,21 @@ private fun DetectorApp() {
     var result by remember { mutableStateOf<FusionResult?>(null) }
     var snapshot by remember { mutableStateOf<Bitmap?>(null) }
     var selectedReportId by rememberSaveable { mutableLongStateOf(0L) }
-    val fusion = remember { FusionModule() }
     val context = LocalContext.current
+    val settings = remember { AppSettings(context) }
     val database = remember { ReportDatabase(context) }
     DisposableEffect(database) { onDispose { database.close() } }
     when (screen) {
         Screen.Start -> StartScreen(
             onStart = { screen = Screen.Preparation },
             onHistory = { screen = Screen.History },
+            onSettings = { screen = Screen.Settings },
+            onDemo = {
+                // Mod de demonstrație: simulează un rezultat RIDICAT (apăsare lungă pe titlu).
+                result = FusionModule(threshold = settings.threshold).fuse(0.9f, 0.9f)
+                snapshot = demoSnapshot()
+                screen = Screen.Result
+            },
         )
         Screen.Preparation -> PreparationScreen(
             onContinue = { screen = Screen.NetworkTriage },
@@ -87,7 +99,7 @@ private fun DetectorApp() {
         )
         Screen.MagneticScan -> MagneticScanScreen(
             onNext = { magneticPeak ->
-                result = fusion.fuse(magneticPeak, opticPeak, networkResult)
+                result = FusionModule(threshold = settings.threshold).fuse(magneticPeak, opticPeak, networkResult)
                 screen = Screen.Result
             },
             onBack = { screen = Screen.OpticScan },
@@ -121,6 +133,10 @@ private fun DetectorApp() {
             },
             onBack = { screen = Screen.Start },
         )
+        Screen.Settings -> SettingsScreen(
+            database = database,
+            onBack = { screen = Screen.Start },
+        )
         Screen.ReportDetail -> ReportDetailScreen(
             database = database,
             reportId = selectedReportId,
@@ -130,13 +146,17 @@ private fun DetectorApp() {
 }
 
 @Composable
-private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit) {
+private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit, onDemo: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Detectorul de Creeps", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Detectorul de Creeps",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { onDemo() }) },
+        )
         Text(
             "Verificare preliminară, nu o garanție",
             style = MaterialTheme.typography.bodyMedium,
@@ -144,6 +164,7 @@ private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit) {
         )
         Button(onClick = onStart) { Text("Începe scanarea") }
         Button(onClick = onHistory, modifier = Modifier.padding(top = 12.dp)) { Text("Istoric rapoarte") }
+        Button(onClick = onSettings, modifier = Modifier.padding(top = 12.dp)) { Text("Setări") }
     }
 }
 
@@ -216,4 +237,21 @@ private fun MagneticScanScreen(onNext: (Float) -> Unit, onBack: () -> Unit) {
             modifier = Modifier.padding(top = 12.dp),
         ) { Text("Vezi rezultatul") }
     }
+}
+
+/** Imagine simulată (fundal gri cu un chenar roșu) pentru modul de demonstrație. */
+private fun demoSnapshot(): Bitmap {
+    val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(AndroidColor.rgb(70, 70, 75))
+    val paint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        color = AndroidColor.RED
+    }
+    canvas.drawRect(380f, 150f, 470f, 240f, paint)
+    paint.style = Paint.Style.FILL
+    paint.color = AndroidColor.WHITE
+    canvas.drawCircle(425f, 195f, 8f, paint)
+    return bitmap
 }

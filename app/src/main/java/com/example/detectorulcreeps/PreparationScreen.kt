@@ -16,6 +16,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -41,6 +44,9 @@ private val permissions = listOf(
 @Composable
 fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
     var understood by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val lightReader = remember { LightSensorReader(context) }
+    val lux by lightReader.readings().collectAsStateWithLifecycle(initialValue = null)
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -61,6 +67,8 @@ fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
                 )
             }
         }
+
+        LightCard(available = lightReader.isAvailable, lux = lux)
 
         Text(
             "Sfaturi",
@@ -98,6 +106,28 @@ fun PreparationScreen(onContinue: () -> Unit, onBack: () -> Unit) {
         Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onBack) { Text("Înapoi") }
             Button(onClick = onContinue, enabled = understood) { Text("Începe triajul") }
+        }
+    }
+}
+
+@Composable
+private fun LightCard(available: Boolean, lux: Float?) {
+    val message = when {
+        !available -> "Acest telefon nu are senzor de lumină. Stingeți singuri lumina."
+        lux == null -> "Se măsoară lumina..."
+        else -> when (lightLevel(lux)) {
+            LightLevel.DARK -> "Încăperea este destul de întunecată pentru testul cu bliț."
+            LightLevel.DIM -> "Lumină slabă. Pentru un test mai bun, stingeți și lumina rămasă."
+            LightLevel.BRIGHT -> "Prea multă lumină. Stingeți lumina sau trageți draperiile."
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Lumina din încăpere", style = MaterialTheme.typography.titleMedium)
+            if (available && lux != null) {
+                Text("${lux.toInt()} lx", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
+            }
+            Text(message, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

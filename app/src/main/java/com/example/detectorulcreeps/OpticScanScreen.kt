@@ -3,6 +3,7 @@ package com.example.detectorulcreeps
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -47,7 +48,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
+
+/** Cât stă blițul aprins, apoi stins, în modul cu diferența dintre cadre. */
+private const val PHASE_MS = 500L
+/** Cadrele de imediat după comutarea blițului sunt ignorate (blițul și expunerea se stabilizează). */
+private const val SETTLE_MS = 250L
+/** Un cadru cu blițul stins mai vechi de atât nu se mai compară (telefonul s-a mișcat între timp). */
+private const val MAX_OFF_AGE_MS = 1500L
+
+/** Starea blițului, citită de analizorul de cadre pe alt fir. */
+private class TorchPhase {
+    @Volatile var on: Boolean = true
+    @Volatile var changedAt: Long = 0L
+}
 
 @Composable
 fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onBack: () -> Unit) {
@@ -66,6 +81,8 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
     }
 
     var torchOn by remember { mutableStateOf(true) }
+    // Modul implicit: blițul clipește și se compară cadrele cu blițul stins și aprins.
+    var differenceMode by remember { mutableStateOf(true) }
     var session by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf(OpticState(0f, 0f, 0f, 0)) }
     // Cadrul cu scorul optic maxim, cu chenarele desenate; apare în ecranul Rezultat.
@@ -89,6 +106,7 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
                 Box(modifier = Modifier.aspectRatio(state.frameAspect).fillMaxSize()) {
                     CameraPreview(
                         torchOn = torchOn,
+                        differenceMode = differenceMode,
                         session = session,
                         onState = { state = it },
                         onSnapshot = { snapshot = it },
@@ -116,13 +134,24 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
             Text("scor optic %.2f (maxim %.2f), puncte: %d".format(state.filteredScore, state.peakScore, state.blobCount))
             LinearProgressIndicator(progress = { state.filteredScore }, modifier = Modifier.padding(top = 8.dp))
             Text(
-                "Țineți telefonul la 30–50 cm și mișcați-l lent spre obiectele suspecte, cu blițul aprins.",
+                if (differenceMode) {
+                    "Blițul clipește: se compară cadrele cu blițul stins și aprins. Țineți telefonul la 30–50 cm " +
+                        "și mișcați-l foarte lent."
+                } else {
+                    "Țineți telefonul la 30–50 cm și mișcați-l lent spre obiectele suspecte, cu blițul aprins."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
         Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { torchOn = !torchOn }) { Text(if (torchOn) "Bliț: ON" else "Bliț: OFF") }
+            Button(onClick = {
+                differenceMode = !differenceMode
+                snapshot = null
+            }) { Text(if (differenceMode) "Mod: diferență" else "Mod: un cadru") }
+            if (!differenceMode) {
+                Button(onClick = { torchOn = !torchOn }) { Text(if (torchOn) "Bliț: ON" else "Bliț: OFF") }
+            }
             Button(onClick = {
                 session++
                 snapshot = null
@@ -138,6 +167,7 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
 @Composable
 private fun CameraPreview(
     torchOn: Boolean,
+    differenceMode: Boolean,
     session: Int,
     onState: (OpticState) -> Unit,
     onSnapshot: (Bitmap) -> Unit,
@@ -155,10 +185,14 @@ private fun CameraPreview(
     var camera by remember { mutableStateOf<Camera?>(null) }
     val currentOnState by rememberUpdatedState(onState)
     val currentOnSnapshot by rememberUpdatedState(onSnapshot)
+    val phase = remember { TorchPhase() }
 
-    DisposableEffect(lifecycleOwner, session) {
+    DisposableEffect(lifecycleOwner, session, differenceMode) {
         val executor = Executors.newSingleThreadExecutor()
         val detector = RetroreflectionDetector()
+        val diffDetector = FrameDifferenceDetector()
+        var lastOff: LumaFrame? = null
+        var lastOffAt = 0L
         val processor = OpticProcessor()
         var bestPeak = 0f
         val providerFuture = ProcessCameraProvider.getInstance(context)
@@ -181,7 +215,20 @@ private fun CameraPreview(
                 val aspect = if (upright) image.width.toFloat() / image.height else image.height.toFloat() / image.width
                 val frame = image.toLumaFrame()
                 image.close()
-                val raw = detector.detect(frame)
+                val raw = if (differenceMode) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - phase.changedAt < SETTLE_MS) return@setAnalyzer
+                    if (!phase.on) {
+                        lastOff = frame
+                        lastOffAt = now
+                        return@setAnalyzer
+                    }
+                    val off = lastOff
+                    if (off == null || now - lastOffAt > MAX_OFF_AGE_MS) return@setAnalyzer
+                    diffDetector.detect(off, frame) ?: return@setAnalyzer
+                } else {
+                    detector.detect(frame)
+                }
                 val detection = raw.copy(blobs = raw.blobs.map { it.rotated(rotation) })
                 val state = processor.process(detection, aspect)
                 // Imaginea se reface doar când scorul maxim crește, nu la fiecare cadru.
@@ -202,8 +249,22 @@ private fun CameraPreview(
         }
     }
 
-    LaunchedEffect(camera, torchOn) {
-        camera?.cameraControl?.enableTorch(torchOn)
+    LaunchedEffect(camera, torchOn, differenceMode) {
+        val control = camera?.cameraControl ?: return@LaunchedEffect
+        if (differenceMode) {
+            var on = true
+            while (true) {
+                control.enableTorch(on)
+                phase.on = on
+                phase.changedAt = SystemClock.elapsedRealtime()
+                delay(PHASE_MS)
+                on = !on
+            }
+        } else {
+            control.enableTorch(torchOn)
+            phase.on = torchOn
+            phase.changedAt = SystemClock.elapsedRealtime()
+        }
     }
 
     AndroidView(factory = { previewView }, modifier = modifier)

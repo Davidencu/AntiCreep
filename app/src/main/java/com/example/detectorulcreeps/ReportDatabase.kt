@@ -82,6 +82,11 @@ class ReportDatabase(context: Context) :
         writableDatabase.delete(TABLE, "$ID = ?", arrayOf(id.toString())) > 0
     }
 
+    /** Șterge toate rapoartele (din ecranul Setări). */
+    suspend fun deleteAll(): Int = withContext(Dispatchers.IO) {
+        writableDatabase.delete(TABLE, null, null)
+    }
+
     private fun Report.toValues() = ContentValues().apply {
         put(NAME, name.trim())
         put(NOTE, note.trim())

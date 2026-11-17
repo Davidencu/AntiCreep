@@ -93,10 +93,7 @@ class RetroreflectionDetector(
             )
         }
 
-        if (blobs.isEmpty()) return OpticDetection(0f, emptyList())
-        // Multe puncte luminoase într-o scenă sunt mai probabil reflexii decât o lentilă: scorul scade.
-        val best = blobs.maxOf { it.score }
-        return OpticDetection(best / (1f + 0.25f * (blobs.size - 1)), blobs)
+        return detectionOf(blobs)
     }
 
     private fun push(idx: Int, bright: BooleanArray, visited: BooleanArray, stack: IntArray, sp: Int): Int {
@@ -108,6 +105,53 @@ class RetroreflectionDetector(
 
     private companion object {
         const val CIRCLE_FILL = 0.65f
+    }
+}
+
+/** Scorul unei liste de puncte: cel mai rotund punct, penalizat când sunt multe (mai probabil reflexii). */
+fun detectionOf(blobs: List<Blob>): OpticDetection {
+    if (blobs.isEmpty()) return OpticDetection(0f, emptyList())
+    val best = blobs.maxOf { it.score }
+    return OpticDetection(best / (1f + 0.25f * (blobs.size - 1)), blobs)
+}
+
+/**
+ * Diferența dintre cadrul cu blițul aprins și cel cu blițul stins: max(0, aprins - stins), pixel cu pixel.
+ * Întoarce null dacă cele două cadre nu au aceeași mărime.
+ */
+fun differenceFrame(off: LumaFrame, on: LumaFrame): LumaFrame? {
+    if (off.width != on.width || off.height != on.height) return null
+    val out = ByteArray(on.width * on.height)
+    for (y in 0 until on.height) {
+        val row = y * on.width
+        for (x in 0 until on.width) {
+            val d = on.at(x, y) - off.at(x, y)
+            if (d > 0) out[row + x] = d.toByte()
+        }
+    }
+    return LumaFrame(on.width, on.height, on.width, out)
+}
+
+/**
+ * Retroreflexie prin diferența dintre cadre (F6): o lentilă apare doar când blițul este aprins,
+ * în timp ce becurile, ferestrele și ecranele sunt la fel de luminoase în ambele cadre și dispar din diferență.
+ * Pe diferență se aplică același filtru de mărime și formă; se păstrează doar punctele care sunt
+ * și foarte luminoase în cadrul cu blițul aprins.
+ */
+class FrameDifferenceDetector(
+    diffThreshold: Int = 80,
+    private val minOnBrightness: Int = 200,
+) {
+    private val detector = RetroreflectionDetector(threshold = diffThreshold)
+
+    fun detect(off: LumaFrame, on: LumaFrame): OpticDetection? {
+        val diff = differenceFrame(off, on) ?: return null
+        val kept = detector.detect(diff).blobs.filter { blob ->
+            val x = (blob.centerX * on.width).toInt().coerceIn(0, on.width - 1)
+            val y = (blob.centerY * on.height).toInt().coerceIn(0, on.height - 1)
+            on.at(x, y) >= minOnBrightness
+        }
+        return detectionOf(kept)
     }
 }
 
