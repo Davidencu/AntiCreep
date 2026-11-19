@@ -143,6 +143,8 @@ class ReportDatabaseTest {
         assertFalse(migrated.result.networkFlag)
         assertFalse(migrated.result.networkComplete)
         assertEquals("", migrated.result.networkDevices)
+        assertEquals("", migrated.result.checkedZones)
+        assertEquals(null, migrated.result.angleCheck)
 
         // Baza migrată acceptă rapoarte noi.
         val id = db.create(report(result = fusion.fuse(0f, 0f, NetworkTriageResult(emptyList()))))

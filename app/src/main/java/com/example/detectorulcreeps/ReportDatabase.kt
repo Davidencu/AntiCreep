@@ -32,7 +32,9 @@ class ReportDatabase(context: Context) :
                 $SNAPSHOT BLOB,
                 $NETWORK_FLAG INTEGER NOT NULL DEFAULT 0,
                 $NETWORK_COMPLETE INTEGER NOT NULL DEFAULT 0,
-                $NETWORK_DEVICES TEXT NOT NULL DEFAULT ''
+                $NETWORK_DEVICES TEXT NOT NULL DEFAULT '',
+                $CHECKED_ZONES TEXT NOT NULL DEFAULT '',
+                $ANGLE_CHECK TEXT
             )
             """.trimIndent()
         )
@@ -46,6 +48,11 @@ class ReportDatabase(context: Context) :
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_FLAG INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_COMPLETE INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $NETWORK_DEVICES TEXT NOT NULL DEFAULT ''")
+        }
+        // Versiunea 4 adaugă zonele bifate și verificarea unghiului.
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $CHECKED_ZONES TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $ANGLE_CHECK TEXT")
         }
     }
 
@@ -101,6 +108,8 @@ class ReportDatabase(context: Context) :
         put(NETWORK_FLAG, if (result.networkFlag) 1 else 0)
         put(NETWORK_COMPLETE, if (result.networkComplete) 1 else 0)
         put(NETWORK_DEVICES, result.networkDevices)
+        put(CHECKED_ZONES, result.checkedZones)
+        put(ANGLE_CHECK, result.angleCheck?.name)
     }
 
     private fun Cursor.toReport() = Report(
@@ -118,13 +127,17 @@ class ReportDatabase(context: Context) :
             networkFlag = getInt(getColumnIndexOrThrow(NETWORK_FLAG)) == 1,
             networkComplete = getInt(getColumnIndexOrThrow(NETWORK_COMPLETE)) == 1,
             networkDevices = getString(getColumnIndexOrThrow(NETWORK_DEVICES)),
+            checkedZones = getString(getColumnIndexOrThrow(CHECKED_ZONES)),
+            angleCheck = getColumnIndexOrThrow(ANGLE_CHECK).let { i ->
+                if (isNull(i)) null else runCatching { AngleVerdict.valueOf(getString(i)) }.getOrNull()
+            },
         ),
         snapshot = getColumnIndexOrThrow(SNAPSHOT).let { if (isNull(it)) null else getBlob(it) },
     )
 
     private companion object {
         const val DB_NAME = "rapoarte.db"
-        const val DB_VERSION = 3
+        const val DB_VERSION = 4
         const val TABLE = "reports"
         const val ID = "id"
         const val NAME = "name"
@@ -140,5 +153,7 @@ class ReportDatabase(context: Context) :
         const val NETWORK_FLAG = "network_flag"
         const val NETWORK_COMPLETE = "network_complete"
         const val NETWORK_DEVICES = "network_devices"
+        const val CHECKED_ZONES = "checked_zones"
+        const val ANGLE_CHECK = "angle_check"
     }
 }

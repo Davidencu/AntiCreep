@@ -177,6 +177,20 @@ fun SuspectZones(result: FusionResult, snapshot: Bitmap?) {
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 8.dp),
         )
+        result.angleCheck?.let {
+            Text("Verificarea unghiului: ${it.label()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
+        val zones = zonesFromText(result.checkedZones)
+        Text(
+            if (zones.isEmpty()) "Zone prioritare bifate: niciuna."
+            else "Zone prioritare bifate (${zones.size} din ${PRIORITY_ZONES.size}): ${zones.joinToString()}.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        val unchecked = PRIORITY_ZONES.filter { it !in zones }
+        if (unchecked.isNotEmpty()) {
+            Text("Încă neverificate: ${unchecked.joinToString()}.", style = MaterialTheme.typography.bodySmall)
+        }
         if (snapshot != null) {
             Text(
                 "Cadrul cu scorul optic cel mai mare. Punctele luminoase sunt încadrate cu roșu:",

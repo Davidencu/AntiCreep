@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,7 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.Executors
 
 /** Cât stă blițul aprins, apoi stins, în modul cu diferența dintre cadre. */
@@ -65,7 +70,10 @@ private class TorchPhase {
 }
 
 @Composable
-fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onBack: () -> Unit) {
+fun OpticScanScreen(
+    onResult: (peakScore: Float, snapshot: Bitmap?, zones: Set<String>, angle: AngleVerdict?) -> Unit,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -83,10 +91,32 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
     var torchOn by remember { mutableStateOf(true) }
     // Modul implicit: blițul clipește și se compară cadrele cu blițul stins și aprins.
     var differenceMode by remember { mutableStateOf(true) }
+    // Giroscopul (sau accelerometrul): în modul diferență, cadrele mișcate nu se suprapun și dau puncte false.
+    val motionReader = remember { MotionReader(context) }
+    val tooFast by motionReader.tooFast().collectAsStateWithLifecycle(initialValue = false)
     var session by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf(OpticState(0f, 0f, 0f, 0)) }
     // Cadrul cu scorul optic maxim, cu chenarele desenate; apare în ecranul Rezultat.
     var snapshot by remember { mutableStateOf<Bitmap?>(null) }
+    // Zonele prioritare bifate de utilizator și verificarea unghiului pentru punctul suspect.
+    var checkedZones by remember { mutableStateOf(setOf<String>()) }
+    var angleRunning by remember { mutableStateOf(false) }
+    var angleProgress by remember { mutableStateOf(0f) }
+    var angleVerdict by remember { mutableStateOf<AngleVerdict?>(null) }
+
+    LaunchedEffect(angleRunning) {
+        if (!angleRunning) return@LaunchedEffect
+        val check = AngleCheck(startScore = state.score)
+        val start = SystemClock.elapsedRealtime()
+        // Unghiul vine din giroscop; cât timp telefonul se mișcă prea repede, scorul nu este de încredere.
+        motionReader.rotationDegrees().first { degrees ->
+            if (!tooFast) check.sample(degrees, state.score, SystemClock.elapsedRealtime() - start)
+            angleProgress = check.progress
+            check.verdict != null
+        }
+        angleVerdict = check.verdict
+        angleRunning = false
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Scanare optică", style = MaterialTheme.typography.titleLarge)
@@ -107,6 +137,7 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
                     CameraPreview(
                         torchOn = torchOn,
                         differenceMode = differenceMode,
+                        tooFast = tooFast,
                         session = session,
                         onState = { state = it },
                         onSnapshot = { snapshot = it },
@@ -131,8 +162,56 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
                 if (state.blobCount > 0) "Punct luminos detectat" else "Niciun punct luminos",
                 style = MaterialTheme.typography.titleMedium,
             )
+            if (tooFast) {
+                Text(
+                    "Mișcați telefonul mai lent: cadrele mișcate sunt ignorate.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
             Text("scor optic %.2f (maxim %.2f), puncte: %d".format(state.filteredScore, state.peakScore, state.blobCount))
             LinearProgressIndicator(progress = { state.filteredScore }, modifier = Modifier.padding(top = 8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = {
+                        angleVerdict = null
+                        angleProgress = 0f
+                        angleRunning = true
+                    },
+                    enabled = motionReader.hasGyroscope && state.blobCount > 0 && !angleRunning,
+                ) { Text("Verifică unghiul") }
+                Text(
+                    when {
+                        !motionReader.hasGyroscope -> "Telefonul nu are giroscop."
+                        angleRunning -> "Înclinați lent telefonul cu 20–25°, cu punctul în imagine."
+                        angleVerdict != null -> angleVerdict!!.label()
+                        else -> "Cu un punct în chenar, verificați dacă dispare la înclinare."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (angleRunning) {
+                LinearProgressIndicator(progress = { angleProgress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+            }
+            Text(
+                "Zone verificate: ${checkedZones.size} din ${PRIORITY_ZONES.size}",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                items(PRIORITY_ZONES) { zone ->
+                    FilterChip(
+                        selected = zone in checkedZones,
+                        onClick = { checkedZones = if (zone in checkedZones) checkedZones - zone else checkedZones + zone },
+                        label = { Text(zone) },
+                    )
+                }
+            }
             Text(
                 if (differenceMode) {
                     "Blițul clipește: se compară cadrele cu blițul stins și aprins. Țineți telefonul la 30–50 cm " +
@@ -155,10 +234,11 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
             Button(onClick = {
                 session++
                 snapshot = null
+                angleVerdict = null
             }) { Text("Resetează") }
             Button(onClick = onBack) { Text("Înapoi") }
         }
-        Button(onClick = { onResult(state.peakScore, snapshot) }, modifier = Modifier.padding(top = 8.dp)) {
+        Button(onClick = { onResult(state.peakScore, snapshot, checkedZones, angleVerdict) }, modifier = Modifier.padding(top = 8.dp)) {
             Text("Continuă: confirmare magnetică")
         }
     }
@@ -168,6 +248,7 @@ fun OpticScanScreen(onResult: (peakScore: Float, snapshot: Bitmap?) -> Unit, onB
 private fun CameraPreview(
     torchOn: Boolean,
     differenceMode: Boolean,
+    tooFast: Boolean,
     session: Int,
     onState: (OpticState) -> Unit,
     onSnapshot: (Bitmap) -> Unit,
@@ -186,6 +267,7 @@ private fun CameraPreview(
     val currentOnState by rememberUpdatedState(onState)
     val currentOnSnapshot by rememberUpdatedState(onSnapshot)
     val phase = remember { TorchPhase() }
+    val currentTooFast by rememberUpdatedState(tooFast)
 
     DisposableEffect(lifecycleOwner, session, differenceMode) {
         val executor = Executors.newSingleThreadExecutor()
@@ -218,6 +300,11 @@ private fun CameraPreview(
                 val raw = if (differenceMode) {
                     val now = SystemClock.elapsedRealtime()
                     if (now - phase.changedAt < SETTLE_MS) return@setAnalyzer
+                    if (currentTooFast) {
+                        // Cadrul stins vechi nu se mai potrivește cu imaginea de acum.
+                        lastOff = null
+                        return@setAnalyzer
+                    }
                     if (!phase.on) {
                         lastOff = frame
                         lastOffAt = now

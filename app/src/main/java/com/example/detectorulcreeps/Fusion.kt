@@ -9,6 +9,8 @@ enum class RiskLevel { LOW, MEDIUM, HIGH }
  * @param networkFlag indiciul de rețea: există cel puțin un dispozitiv suspect
  * @param networkComplete false dacă triajul de rețea nu a putut rula până la capăt
  * @param networkDevices dispozitivele suspecte din rețea, câte unul pe linie (gol dacă nu sunt)
+ * @param checkedZones zonele prioritare bifate la scanarea optică, câte una pe linie
+ * @param angleCheck rezultatul verificării unghiului, sau null dacă nu s-a făcut
  */
 data class FusionResult(
     val level: RiskLevel,
@@ -20,6 +22,8 @@ data class FusionResult(
     val networkFlag: Boolean = false,
     val networkComplete: Boolean = true,
     val networkDevices: String = "",
+    val checkedZones: String = "",
+    val angleCheck: AngleVerdict? = null,
 )
 
 /**

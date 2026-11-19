@@ -52,13 +52,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Start, Preparation, NetworkTriage, OpticScan, MagneticScan, Result, History, ReportDetail, Settings }
+private enum class Screen { Start, Preparation, NetworkTriage, OpticScan, MagneticScan, Result, History, ReportDetail, Settings, Guide }
 
 @Composable
 private fun DetectorApp() {
     var screen by rememberSaveable { mutableStateOf(Screen.Start) }
     var opticPeak by rememberSaveable { mutableFloatStateOf(0f) }
     var networkResult by remember { mutableStateOf<NetworkTriageResult?>(null) }
+    var checkedZones by remember { mutableStateOf(setOf<String>()) }
+    var angleVerdict by remember { mutableStateOf<AngleVerdict?>(null) }
     var result by remember { mutableStateOf<FusionResult?>(null) }
     var snapshot by remember { mutableStateOf<Bitmap?>(null) }
     var selectedReportId by rememberSaveable { mutableLongStateOf(0L) }
@@ -71,6 +73,7 @@ private fun DetectorApp() {
             onStart = { screen = Screen.Preparation },
             onHistory = { screen = Screen.History },
             onSettings = { screen = Screen.Settings },
+            onGuide = { screen = Screen.Guide },
             onDemo = {
                 // Mod de demonstrație: simulează un rezultat RIDICAT (apăsare lungă pe titlu).
                 result = FusionModule(threshold = settings.threshold).fuse(0.9f, 0.9f)
@@ -90,9 +93,11 @@ private fun DetectorApp() {
             onBack = { screen = Screen.Preparation },
         )
         Screen.OpticScan -> OpticScanScreen(
-            onResult = { peak, opticSnapshot ->
+            onResult = { peak, opticSnapshot, zones, angle ->
                 opticPeak = peak
                 snapshot = opticSnapshot
+                checkedZones = zones
+                angleVerdict = angle
                 screen = Screen.MagneticScan
             },
             onBack = { screen = Screen.NetworkTriage },
@@ -100,6 +105,7 @@ private fun DetectorApp() {
         Screen.MagneticScan -> MagneticScanScreen(
             onNext = { magneticPeak ->
                 result = FusionModule(threshold = settings.threshold).fuse(magneticPeak, opticPeak, networkResult)
+                    .copy(checkedZones = zonesToText(checkedZones), angleCheck = angleVerdict)
                 screen = Screen.Result
             },
             onBack = { screen = Screen.OpticScan },
@@ -133,6 +139,7 @@ private fun DetectorApp() {
             },
             onBack = { screen = Screen.Start },
         )
+        Screen.Guide -> GuideScreen(onBack = { screen = Screen.Start })
         Screen.Settings -> SettingsScreen(
             database = database,
             onBack = { screen = Screen.Start },
@@ -146,7 +153,7 @@ private fun DetectorApp() {
 }
 
 @Composable
-private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit, onDemo: () -> Unit) {
+private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit, onGuide: () -> Unit, onDemo: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -165,6 +172,7 @@ private fun StartScreen(onStart: () -> Unit, onHistory: () -> Unit, onSettings: 
         Button(onClick = onStart) { Text("Începe scanarea") }
         Button(onClick = onHistory, modifier = Modifier.padding(top = 12.dp)) { Text("Istoric rapoarte") }
         Button(onClick = onSettings, modifier = Modifier.padding(top = 12.dp)) { Text("Setări") }
+        Button(onClick = onGuide, modifier = Modifier.padding(top = 12.dp)) { Text("Ghid și Despre") }
     }
 }
 
