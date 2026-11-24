@@ -6,6 +6,38 @@ Proiect pentru SMA/CHS, de Popa Tijana și Păun David.
 
 > **Important:** aplicația este o verificare preliminară, nu o garanție. Un rezultat „risc scăzut" nu înseamnă că nu există o cameră. Starea actuală a detecției este descrisă mai jos, la „Cât de bine detectează acum".
 
+## Motivația proiectului
+
+Utilizarea camerelor video miniaturale în spații private, precum hoteluri, apartamente închiriate sau vestiare, reprezintă o posibilă problemă de confidențialitate. Identificarea acestora este dificilă, deoarece pot fi camuflate în obiecte obișnuite, pot funcționa fără conexiune la rețeaua Wi-Fi sau pot stoca înregistrările local. Echipamentele specializate de detecție pot fi costisitoare și mai puțin accesibile utilizatorilor obișnuiți.
+
+Proiectul **AntiCreep** urmărește dezvoltarea unei aplicații Android care utilizează componentele hardware disponibile pe un smartphone pentru a identifica indicii ale existenței unor camere ascunse. Soluția combină analiza optică a retroreflexiei lentilelor, scanarea rețelei locale și analiza câmpului magnetic, urmând să integreze și metode de inteligență artificială pentru clasificarea obiectelor suspecte.
+
+Un obiectiv important este reducerea alarmelor false și furnizarea unor rezultate explicabile, însoțite de niveluri de incertitudine și recomandări pentru utilizator. Procesarea locală a datelor contribuie, de asemenea, la protejarea confidențialității.
+
+AntiCreep nu își propune să înlocuiască echipamentele profesionale de detecție, ci să ofere un instrument accesibil de verificare preliminară.
+
+## Stadiul actual al soluțiilor existente (State of the Art)
+
+Pe platforma Android există deja numeroase aplicații destinate identificării camerelor ascunse. Acestea utilizează în general camera telefonului, blițul, magnetometrul, conexiunile Wi-Fi și Bluetooth. Printre soluțiile relevante se numără:
+
+### Aplicații dedicate detecției camerelor ascunse
+
+- **[Glint – Hidden Camera Detector](https://play.google.com/store/apps/details?id=com.pssd.glint)** – combină verificarea reflexiilor lentilelor, detecția surselor infraroșii, scanarea rețelelor Wi-Fi și Bluetooth și analiza câmpului magnetic. Include ghiduri de inspecție și explicarea limitărilor fiecărei metode.
+
+- **[HydraScan – Hidden Camera Scan](https://play.google.com/store/apps/details?id=com.hydrascan.app)** – oferă scanare optică prin iluminare intermitentă, analiză magnetică, identificarea dispozitivelor Bluetooth și auditul rețelei locale. Include și un ghid pentru verificarea încăperilor.
+
+- **[SpyGuard – Hidden Cam Detector](https://play.google.com/store/apps/details?id=com.harun.spyguard)** – utilizează patru metode de verificare: identificarea reflexiilor lentilelor prin bliț controlat, detecție infraroșie, scanare Wi-Fi și măsurarea câmpului magnetic. Funcția avansată de identificare optică este disponibilă contra cost.
+
+- **[Hidden Guard – Camera Detector](https://play.google.com/store/apps/details?id=com.aistudio.hiddenguard.wzpkqr)** – integrează scanare optică asistată de AI, verificarea reflexiilor, detecție infraroșie, magnetometru, scanare Wi-Fi și Bluetooth. Include combinarea rezultatelor, un ghid pentru inspectarea încăperilor și rapoarte.
+
+- **[Hidden Camera Detector FindSpy](https://play.google.com/store/apps/details?id=com.astraler.android.hiddencamera)** – combină scanarea rețelei, detecția Bluetooth, analiza câmpului magnetic și verificarea surselor infraroșii. Oferă și recomandări pentru identificarea dispozitivelor suspecte.
+
+- **[Hidden Camera Detector – FutureApps](https://play.google.com/store/apps/details?id=hiddencamdetector.futureapps.com.hiddencamdetector)** – una dintre aplicațiile cu răspândire mare din această categorie, cu peste 10 milioane de descărcări raportate în Google Play. Principalele funcționalități sunt analiza câmpului magnetic și verificarea surselor infraroșii cu ajutorul camerei telefonului.
+
+### Soluții complementare
+
+- **[Fing – Network Tools](https://play.google.com/store/apps/details?id=com.overlook.android.fing)** – aplicație generală de analiză a rețelelor, care identifică dispozitivele conectate la Wi-Fi, oferă informații despre producător și include scanarea porturilor și descoperirea serviciilor. Poate ajuta la identificarea camerelor conectate la rețeaua locală, dar nu este un detector optic dedicat.
+
 ## Cum funcționează
 
 Scanarea are trei pași, de la larg la îngust:
@@ -151,6 +183,14 @@ Totul este în `app/src/main/java/com/example/detectorulcreeps/`:
 | `VIBRATE` | Vibrația la risc ridicat |
 
 Magnetometrul, giroscopul și senzorul de lumină nu cer permisiuni.
+
+### Concluzii asupra stadiului actual
+
+Soluțiile existente oferă deja o mare parte dintre funcționalitățile propuse pentru AntiCreep, iar unele integrează inclusiv inteligență artificială și combinarea mai multor metode de detecție. Prin urmare, diferențierea proiectului nu se poate baza exclusiv pe numărul de senzori sau pe integrarea unui model AI.
+
+AntiCreep urmărește să se diferențieze prin accentul pus pe **fiabilitatea detecției, reducerea alarmelor false și explicabilitatea rezultatelor**. Integrarea analizei temporale a reflexiilor, clasificarea locală a obiectelor suspecte și evaluarea experimentală a performanței pe dispozitive Android diferite pot contribui la obținerea unei soluții mai transparente și mai utile pentru utilizator.
+
+Aplicațiile prezentate descriu funcționalități declarate de dezvoltatorii lor; existența acestora în Google Play nu demonstrează automat acuratețea detecției în condiții reale.
 
 ## Documentația proiectului
 
